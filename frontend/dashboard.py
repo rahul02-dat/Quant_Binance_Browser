@@ -60,7 +60,6 @@ try:
         status_data = status_response.json()
         api_connected = True
         api_status = status_data
-        st.sidebar.success("✓ API Connected")
         
         if 'websocket_stats' in status_data:
             ws_stats = status_data['websocket_stats']
@@ -68,7 +67,7 @@ try:
             st.sidebar.metric("Messages Received", msg_count)
             
             if msg_count == 0:
-                st.sidebar.warning("⚠ No data received yet. Wait 30s...")
+                st.sidebar.warning("⚠ No data received yet. Wait...")
             
             if ws_stats.get('buffer_sizes'):
                 st.sidebar.write("**Buffer Sizes:**")
@@ -83,14 +82,14 @@ try:
         st.sidebar.error("⚠ API Connection Issue")
 except requests.exceptions.ConnectionError:
     st.sidebar.error("✗ API Disconnected")
-    st.error("🚨 Cannot connect to API server!")
+    st.error("Cannot connect to API server!")
     st.info("Make sure the API is running: `python app.py`")
     st.stop()
 except Exception as e:
     st.sidebar.error(f"✗ Error: {str(e)[:50]}")
 
 if not api_connected:
-    st.error("🚨 API server is not responding")
+    st.error("API server is not responding")
     st.info("""
     **To fix this:**
     1. Open a terminal
@@ -119,9 +118,6 @@ col4, col5 = st.columns(2)
 
 with col4:
     rolling_window = st.slider("Rolling Window", 5, 100, 20, key="window")
-
-with col5:
-    st.write("📊 Auto-updating every 2 seconds")
 
 tab1, tab2, tab3, tab4 = st.tabs(["Live Data", "Analytics", "Alerts", "Export"])
 
