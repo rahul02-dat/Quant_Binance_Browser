@@ -6,11 +6,26 @@ import requests
 import time
 from datetime import datetime
 
-st.set_page_config(page_title="Quant Analytics Dashboard", layout="wide")
+st.set_page_config(
+    page_title="Quant Analytics Dashboard", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:8000/api/v1"
+
+st.markdown("""
+    <style>
+    .main > div {
+        padding-top: 2rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("Real-Time Quantitative Analytics Dashboard")
+
+api_connected = False
+api_status = {}
 
 st.sidebar.title("System Status")
 
@@ -18,11 +33,16 @@ try:
     status_response = requests.get(f"{API_URL}/", timeout=2)
     if status_response.status_code == 200:
         status_data = status_response.json()
-        st.sidebar.success("✓ API Connected")
+        api_connected = True
+        api_status = status_data
         
         if 'websocket_stats' in status_data:
             ws_stats = status_data['websocket_stats']
-            st.sidebar.metric("Messages Received", ws_stats.get('total_messages', 0))
+            msg_count = ws_stats.get('total_messages', 0)
+            st.sidebar.metric("Messages Received", msg_count)
+            
+            if msg_count == 0:
+                st.sidebar.warning("⚠ No data received yet. Wait 30s...")
             
             if ws_stats.get('buffer_sizes'):
                 st.sidebar.write("**Buffer Sizes:**")
@@ -35,8 +55,28 @@ try:
                 st.sidebar.text(f"{symbol}: {count} ticks")
     else:
         st.sidebar.error("⚠ API Connection Issue")
-except:
+except requests.exceptions.ConnectionError:
     st.sidebar.error("✗ API Disconnected")
+    st.error("🚨 Cannot connect to API server!")
+    st.info("Make sure the API is running: `python app.py`")
+    st.stop()
+except Exception as e:
+    st.sidebar.error(f"✗ Error: {str(e)[:50]}")
+
+if not api_connected:
+    st.error("🚨 API server is not responding")
+    st.info("""
+    **To fix this:**
+    1. Open a terminal
+    2. Run: `python app.py`
+    3. Wait for "Application started" message
+    4. Refresh this page
+    """)
+    
+    if st.button("Try to reconnect"):
+        st.rerun()
+    
+    st.stop()
 
 col1, col2, col3 = st.columns(3)
 

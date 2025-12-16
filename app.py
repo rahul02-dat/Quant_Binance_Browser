@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import time
+import subprocess
+import os
 from fastapi import FastAPI
 import uvicorn
 from storage.database import init_db, SessionLocal
@@ -11,10 +13,10 @@ from analytics.resampler import Resampler
 from analytics.rolling import RollingBuffer
 from analytics.spread import SpreadAnalytics
 from alerts.engine import AlertEngine
-from api.routes import router
+from api.routes import router, set_analytics_app
 from config.settings import (
     DEFAULT_SYMBOLS, TIMEFRAMES, DEFAULT_ROLLING_WINDOW,
-    API_HOST, API_PORT, ANALYTICS_INTERVAL
+    API_HOST, API_PORT, ANALYTICS_INTERVAL, DASHBOARD_PORT
 )
 
 logging.basicConfig(
@@ -25,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Quant Analytics API")
 app.include_router(router, prefix="/api/v1")
+
+dashboard_process = None
 
 class QuantAnalyticsApp:
     def __init__(self, symbols=None):
@@ -64,6 +68,7 @@ class QuantAnalyticsApp:
         self.rolling_buffer.add_tick(tick['symbol'], tick)
     
     async def resampling_loop(self):
+        logger.info("Resampling loop starting in 10 seconds...")
         await asyncio.sleep(10)
         
         while self.running:
@@ -74,6 +79,7 @@ class QuantAnalyticsApp:
                     ticks = self.rolling_buffer.get_ticks(symbol, limit=5000)
                     
                     if len(ticks) < 10:
+                        logger.debug(f"Not enough ticks for {symbol}: {len(ticks)}")
                         continue
                     
                     db = SessionLocal()
@@ -84,9 +90,9 @@ class QuantAnalyticsApp:
                             
                             if bars and len(bars) > 0:
                                 ResampledRepository.bulk_insert_bars(db, bars)
-                                logger.debug(f"Resampled {len(bars)} bars for {symbol} {timeframe}")
+                                logger.info(f"✓ Resampled {len(bars)} bars for {symbol} {timeframe}")
                         except Exception as e:
-                            logger.debug(f"Resampling error for {symbol} {timeframe}: {e}")
+                            logger.error(f"Resampling error for {symbol} {timeframe}: {e}")
                     
                     db.close()
             
@@ -94,6 +100,7 @@ class QuantAnalyticsApp:
                 logger.error(f"Error in resampling loop: {e}")
     
     async def analytics_loop(self):
+        logger.info("Analytics loop starting in 15 seconds...")
         await asyncio.sleep(15)
         
         while self.running:
@@ -110,6 +117,7 @@ class QuantAnalyticsApp:
                 prices_y = self.rolling_buffer.get_prices(symbol_y, limit=1000)
                 
                 if len(prices_x) < DEFAULT_ROLLING_WINDOW or len(prices_y) < DEFAULT_ROLLING_WINDOW:
+                    logger.debug(f"Not enough prices: {symbol_x}={len(prices_x)}, {symbol_y}={len(prices_y)}")
                     continue
                 
                 prices_x = prices_x[~prices_x.index.duplicated(keep='last')]
@@ -142,7 +150,7 @@ class QuantAnalyticsApp:
                     db.close()
                     
                     self.alert_engine.check_alerts(analytics)
-                    logger.debug(f"Analytics computed: z_score={analytics.get('z_score_last')}")
+                    logger.info(f"✓ Analytics: z_score={analytics.get('z_score_last', 0):.2f}")
             
             except Exception as e:
                 logger.error(f"Error in analytics loop: {e}")
@@ -159,23 +167,35 @@ class QuantAnalyticsApp:
 
 analytics_app = QuantAnalyticsApp()
 
+# Pass the analytics app to the router so it can access app state
+set_analytics_app(analytics_app)
+
 @app.on_event("startup")
 async def startup_event():
+    global dashboard_process
     asyncio.create_task(analytics_app.start())
+    
+    # Start the Streamlit dashboard in a subprocess
+    dashboard_path = os.path.join(os.path.dirname(__file__), "frontend", "dashboard.py")
+    dashboard_process = subprocess.Popen(
+        ["streamlit", "run", dashboard_path, f"--server.port={DASHBOARD_PORT}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    logger.info(f"Dashboard started on http://localhost:{DASHBOARD_PORT}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global dashboard_process
     await analytics_app.stop()
-
-@app.get("/")
-def root():
-    return {
-        "status": "running",
-        "symbols": analytics_app.symbols,
-        "websocket_stats": analytics_app.ws_client.get_stats() if analytics_app.ws_client else {},
-        "buffer_status": {symbol: len(analytics_app.rolling_buffer.get_ticks(symbol)) 
-                         for symbol in analytics_app.symbols}
-    }
+    
+    # Stop the Streamlit dashboard
+    if dashboard_process:
+        dashboard_process.terminate()
+        try:
+            dashboard_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            dashboard_process.kill()
 
 def main():
     logger.info("=" * 60)
@@ -184,9 +204,7 @@ def main():
     logger.info(f"Symbols: {DEFAULT_SYMBOLS}")
     logger.info(f"API Server: http://{API_HOST}:{API_PORT}")
     logger.info(f"API Docs: http://{API_HOST}:{API_PORT}/docs")
-    logger.info("")
-    logger.info("To start the dashboard, run in another terminal:")
-    logger.info("  streamlit run frontend/dashboard.py")
+    logger.info(f"Dashboard: http://localhost:{DASHBOARD_PORT}")
     logger.info("=" * 60)
     
     uvicorn.run(app, host=API_HOST, port=API_PORT, log_level="info")

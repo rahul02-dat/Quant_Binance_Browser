@@ -11,6 +11,27 @@ import time
 
 router = APIRouter()
 
+# Global reference to the analytics app (will be set from app.py)
+_analytics_app = None
+
+def set_analytics_app(app):
+    global _analytics_app
+    _analytics_app = app
+
+@router.get("/", response_model=dict)
+def root_status():
+    """Root status endpoint for dashboard connection check"""
+    if not _analytics_app:
+        return {"status": "initializing", "websocket_stats": {}, "buffer_status": {}}
+    
+    return {
+        "status": "running",
+        "symbols": _analytics_app.symbols,
+        "websocket_stats": _analytics_app.ws_client.get_stats() if _analytics_app.ws_client else {},
+        "buffer_status": {symbol: len(_analytics_app.rolling_buffer.get_ticks(symbol)) 
+                         for symbol in _analytics_app.symbols}
+    }
+
 @router.get("/ticks/{symbol}", response_model=List[TickResponse])
 def get_ticks(symbol: str, limit: int = 1000, db: Session = Depends(get_db)):
     ticks = TickRepository.get_recent_ticks(db, symbol, limit)

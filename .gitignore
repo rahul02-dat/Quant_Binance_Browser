@@ -2,3 +2,8 @@ env/
 __pycache__/
 *.pyc
 *.pyo
+debug_data.py
+.vscode/
+.DS_Store
+market_data.db
+data/
