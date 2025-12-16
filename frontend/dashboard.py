@@ -47,7 +47,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("Real-Time Quantitative Analytics Dashboard")
+st.title("Quantitative Analytics Dashboard")
 
 api_connected = False
 api_status = {}
@@ -112,7 +112,7 @@ with col2:
     symbol_y = st.selectbox("Symbol Y", ["ETHUSDT", "BTCUSDT", "BNBUSDT"], key="symbol_y")
 
 with col3:
-    timeframe = st.selectbox("Timeframe", ["1s", "1m", "5m"], key="timeframe")
+    timeframe = st.selectbox("Timeframe", ["1s", "1m", "5m"], index=1, key="timeframe")
 
 col4, col5 = st.columns(2)
 
