@@ -12,6 +12,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Cache API calls for 2 seconds to reduce load
+@st.cache_data(ttl=2)
+def fetch_bars(symbol, timeframe):
+    try:
+        response = requests.get(f"{API_URL}/bars/{symbol}/{timeframe}?limit=100", timeout=5)
+        return response.json() if response.status_code == 200 else []
+    except:
+        return []
+
+@st.cache_data(ttl=2)
+def fetch_analytics(symbol_x, symbol_y):
+    try:
+        response = requests.get(f"{API_URL}/analytics/{symbol_x}/{symbol_y}/tick?limit=100", timeout=5)
+        return response.json() if response.status_code == 200 else []
+    except:
+        return []
+
+@st.cache_data(ttl=2)
+def fetch_alerts():
+    try:
+        response = requests.get(f"{API_URL}/alerts", timeout=5)
+        return response.json() if response.status_code == 200 else []
+    except:
+        return []
+
 API_URL = "http://localhost:8000/api/v1"
 
 st.markdown("""
@@ -96,26 +121,16 @@ with col4:
     rolling_window = st.slider("Rolling Window", 5, 100, 20, key="window")
 
 with col5:
-    auto_refresh = st.checkbox("Auto-refresh", value=True, key="auto_refresh")
-    if auto_refresh:
-        refresh_rate = st.slider("Refresh Rate (seconds)", 0.5, 5.0, 1.0, key="refresh")
-    else:
-        refresh_rate = None
+    st.write("📊 Auto-updating every 2 seconds")
 
 tab1, tab2, tab3, tab4 = st.tabs(["Live Data", "Analytics", "Alerts", "Export"])
 
 with tab1:
     st.subheader("Live Price Data")
     
-    price_placeholder = st.empty()
-    stats_placeholder = st.empty()
-    
     try:
-        response_x = requests.get(f"{API_URL}/bars/{symbol_x}/{timeframe}?limit=100", timeout=5)
-        response_y = requests.get(f"{API_URL}/bars/{symbol_y}/{timeframe}?limit=100", timeout=5)
-        
-        bars_x = response_x.json() if response_x.status_code == 200 else []
-        bars_y = response_y.json() if response_y.status_code == 200 else []
+        bars_x = fetch_bars(symbol_x, timeframe)
+        bars_y = fetch_bars(symbol_y, timeframe)
         
         if bars_x and bars_y and len(bars_x) > 0 and len(bars_y) > 0:
             df_x = pd.DataFrame(bars_x)
@@ -161,7 +176,7 @@ with tab1:
                 xaxis2_rangeslider_visible=False
             )
             
-            price_placeholder.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f"price_chart_{symbol_x}_{symbol_y}_{timeframe}")
             
             col1, col2 = st.columns(2)
             
@@ -189,12 +204,7 @@ with tab2:
         st.info("ADF test will be computed with next analytics update")
     
     try:
-        response = requests.get(
-            f"{API_URL}/analytics/{symbol_x}/{symbol_y}/tick?limit=100",
-            timeout=5
-        )
-        
-        analytics = response.json() if response.status_code == 200 else []
+        analytics = fetch_analytics(symbol_x, symbol_y)
         
         if analytics and len(analytics) > 0:
             df_analytics = pd.DataFrame(analytics)
@@ -354,8 +364,7 @@ with tab3:
     st.subheader("Active Alerts")
     
     try:
-        alerts_response = requests.get(f"{API_URL}/alerts", timeout=5)
-        alerts = alerts_response.json() if alerts_response.status_code == 200 else []
+        alerts = fetch_alerts()
         
         if alerts and len(alerts) > 0:
             for alert in alerts:
@@ -431,6 +440,15 @@ with tab4:
         except Exception as e:
             st.error(f"Error exporting data: {e}")
 
-if auto_refresh and refresh_rate:
-    time.sleep(refresh_rate)
+# Auto-refresh every 2 seconds
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+time.sleep(2)
+st.rerun()
+
+# Hidden auto-refresh trigger every 2 seconds
+placeholder = st.empty()
+with placeholder:
+    time.sleep(2)
     st.rerun()
