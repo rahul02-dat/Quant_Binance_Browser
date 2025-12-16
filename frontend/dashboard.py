@@ -198,8 +198,6 @@ with tab1:
 with tab2:
     st.subheader("Pair Analytics")
     
-    analytics_placeholder = st.empty()
-    
     if st.button("Run ADF Test"):
         st.info("ADF test will be computed with next analytics update")
     
@@ -258,7 +256,7 @@ with tab2:
             
             fig.update_layout(height=800, showlegend=True)
             
-            analytics_placeholder.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f"analytics_chart_{symbol_x}_{symbol_y}")
             
             latest = df_analytics.iloc[-1]
             
@@ -441,14 +439,5 @@ with tab4:
             st.error(f"Error exporting data: {e}")
 
 # Auto-refresh every 2 seconds
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
 time.sleep(2)
 st.rerun()
-
-# Hidden auto-refresh trigger every 2 seconds
-placeholder = st.empty()
-with placeholder:
-    time.sleep(2)
-    st.rerun()
