@@ -79,6 +79,10 @@ quant_analytics_app/
 - **Error Handling**: Comprehensive logging and graceful error recovery
 
 ## 🏗️ Architecture
+<p align = "center">
+    <img width="2401" height="5365" alt="image" src="https://github.com/user-attachments/assets/83d634cd-f4aa-4142-a36a-744e648648d1" />
+</p>
+
 
 ### Data Flow
 
